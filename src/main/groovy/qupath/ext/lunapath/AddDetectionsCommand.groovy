@@ -56,6 +56,24 @@ class AddDetectionsCommand {
             }
 
             // ================================
+            // INTRO DIALOG
+            // ================================
+            def info = new Alert(Alert.AlertType.INFORMATION)
+            info.setTitle("Add Detections — Required Files")
+            info.setHeaderText("You will be asked to select 3 files:")
+            info.setContentText(
+                "1. NUCLEUS GeoJSON  — polygon boundaries for each nucleus\n" +
+                "   • Must have an 'id' property per feature\n\n" +
+                "2. MEASUREMENTS CSV  — per-cell marker intensities\n" +
+                "   • First column must be 'id' matching the GeoJSON\n\n" +
+                "3. CELL BOUNDARY GeoJSON  (optional)\n" +
+                "   • Larger polygons wrapping each nucleus\n" +
+                "   • Same format as nucleus GeoJSON"
+            )
+            info.initOwner(qupath.getStage())
+            info.showAndWait()
+
+            // ================================
             // FILE SELECTION
             // ================================
             def geojsonPath = chooseFile(
