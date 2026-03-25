@@ -1,205 +1,149 @@
-# QuPath extension template
+# LunaPath QuPath Extension
 
-This repo contains a template and instructions to help create a new extension for [QuPath](https://qupath.github.io).
+A QuPath extension for importing cell segmentation data, syncing marker classifications, 
+and defining custom cell phenotypes. Designed to work with Lunaphore COMET output files.
 
-It already contains two minimal extensions - one using Java, one using Groovy - so the first task is to make sure that they work.
-Then, it's a matter of customizing the code to make it more useful.
+## Requirements
 
-> **Update!** 
-> For QuPath v0.6.0 this repo switched to use Kotlin DSL for Gradle build files - 
-> and also to use the [QuPath Gradle Plugin](https://github.com/qupath/qupath-gradle-plugin).
-> 
-> The outcome is that the build files are _much_ simpler.
+- QuPath 0.6.0 or later
 
+## Installation
 
-## Build the extension
+1. Download the latest `qupath-extension-lunapath-X.X.X.jar` from the [Releases](../../releases) page
+2. Drag and drop the `.jar` file onto an open QuPath window
+3. Restart QuPath
+4. The **LunaPath** menu will appear under **Extensions**
 
-Building the extension with Gradle should be pretty easy - you don't even need to install Gradle separately, because the 
-[Gradle Wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html) will take care of that.
+---
 
-Open a command prompt, navigate to where the code lives, and use
-```bash
-gradlew build
-```
+## Workflow Overview
 
-The built extension should be found inside `build/libs`.
-You can drag this onto QuPath to install it.
-You'll be prompted to create a user directory if you don't already have one.
+LunaPath provides three commands under **Extensions > LunaPath**, designed to be run in order:
 
-The minimal extension here doesn't do much, but it should at least install a new command under the 'Extensions' menu in 
-QuPath.
+1. **Add Detections from GeoJSON** — import cell segmentations and measurements
+2. **Sync Classes & Export** — binarize marker classifications and export to CSV
+3. **Phenotype Classifier** — define and apply custom phenotypes
 
-> In case your extension contains external dependencies beyond what QuPath already includes, you can create a 
-> [single jar file](https://imperceptiblethoughts.com/shadow/introduction/#benefits-of-shadow) that bundles these along 
-> with your extension by using
-> ```bash
-> gradlew shadowJar
-> ```
-> If you don't do that, you'll need to drag *all* the extra dependences onto QuPath to install them as well.
+---
 
+## Step 1: Set Up Your QuPath Project
 
-## Configure the extension
+Before running any LunaPath commands:
 
-Edit `settings.gradle.kts` to specify which version of QuPath your extension should be compatible with, e.g.
+- Create a new project via **File > Project > Create project...**
+- Load your image via **File > Open...** or drag and drop
+- Set the image type to **Fluorescence** when prompted
 
-```kotlin
-qupath {
-    version = "0.6.0"
+---
+
+## Step 2: Add Detections from GeoJSON
+
+**Extensions > LunaPath > Add Detections from GeoJSON**
+
+You will be prompted to select files in this order:
+
+1. **Nucleus GeoJSON** — polygon boundaries for each nucleus (e.g. `nuclei.geojson`)
+   - Must have an `id` property on each feature
+2. **Measurements CSV** — per-cell marker intensities (e.g. `qupath_intensities.csv`)
+   - First column must be `id`, matching the GeoJSON feature IDs
+   - Remaining columns are marker measurements
+3. **Cell boundary GeoJSON** *(optional)* — larger outer polygons wrapping each nucleus
+   (e.g. `cell_boundaries.geojson`) — same format as nucleus GeoJSON
+
+Once loaded, toggle cell/nucleus visibility via **View > Cell display**.
+
+---
+
+## Step 3: Binarize Markers (QuPath built-in)
+
+This step uses QuPath's built-in classifier tools, not LunaPath directly:
+
+1. Go to **Classify > Object Classification > Create single measurement classifier**
+2. Set object filter to **Detections (all)**
+3. Select the channel and measurement for the marker you want to threshold
+4. Set the above/below threshold classes (e.g. `CD3 +` / `CD3 -`)
+5. Enable **Live preview** and drag the threshold until cells are correctly split
+6. Save the classifier
+7. Repeat for each marker
+
+Then combine them via **Classify > Object Classification > Create composite classifier**, 
+select all your single-marker classifiers, and click **Save & apply**.
+
+Each cell will be labelled with all marker classifications (e.g. `CD8 -: CD3 +: FOXP3 -: ...`).
+
+---
+
+## Step 4: Sync Classes & Export
+
+**Extensions > LunaPath > Sync Classes & Export**
+
+Run this after applying the composite classifier. It will:
+
+- Register all assigned classes in QuPath's class list
+- Store binary marker values (0/1) as hidden measurements on each cell
+  so they can be read by the Phenotype Classifier even after reclassification
+- Prompt you to save a binarized CSV export (one row per cell, one column per marker)
+
+> **Important:** Run this before using the Phenotype Classifier. If you skip it, 
+> the Phenotype Classifier will fall back to reading PathClasses directly, which 
+> stops working after phenotypes are applied.
+
+---
+
+## Step 5: Phenotype Classifier
+
+**Extensions > LunaPath > Phenotype Classifier**
+
+Define custom cell phenotypes by specifying which markers must be present:
+
+- Each row is a phenotype (e.g. "CD8 T cell")
+- Click the marker buttons to toggle them to **Yes** (marker must be present) 
+  or **—** (ignore)
+- Click **Validate** to preview cell counts and check for duplicate rules
+- Click **Classify All** to apply phenotypes to all cells
+
+You can save and load phenotype definitions as CSV files using the **Save CSV** / **Load CSV** buttons.
+
+**Tie-breaking:** if a cell matches multiple phenotypes, the most specific one wins 
+(most required markers). True ties are labelled **Ambiguous**.
+
+---
+
+## File Format Reference
+
+### Nucleus / Cell GeoJSON
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "ID_1" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[x1, y1], [x2, y2], ...]]
+      }
+    }
+  ]
 }
 ```
 
-Edit `build.gradle.kts` to specify the details of your extension
-
-```kotlin
-qupathExtension {
-  name = "qupath-extension-template"
-  group = "io.github.qupath"
-  version = "0.1.0-SNAPSHOT"
-  description = "A simple QuPath extension"
-  automaticModule = "io.github.qupath.extension.template"
-}
+### Measurements CSV
 ```
-
-
-## Run QuPath + the extension
-
-During development, your probably want to run QuPath easily with your extension installed for debugging.
-
-### 0. Make sure you have Java installed
-You'll need to install Java first.
-
-At the time of writing, we use a Java 21 JDK downloaded from https://adoptium.net/
-
-> Java 21 is a 'Long Term Support' release - which is why we use it instead of the very latest version.
-
-### 1. Get QuPath's source code
-You can find instructions at https://qupath.readthedocs.io/en/stable/docs/reference/building.html
-
-### 2. Create an `include-extra` file
-Create a file called `include-extra` in the root directory of the QuPath source code (*not* the extension code!).
-
-Set the contents of this file to:
+id,Marker1 - TRITC,Marker2 - Cy5,DAPI,...
+ID_1,452.3,812.1,1204.5,...
+ID_2,103.2,2341.8,987.2,...
 ```
-[includeBuild]
-/path/to/your/extension
+The `id` column must match the GeoJSON feature IDs exactly.
 
-[dependencies]
-extension-group:extension-name
-```
-replacing the default lines where needed.
+---
 
-For example, to build the extension with the names given above you'd use
-```
-[includeBuild]
-../qupath-extension-template
+## Part of the LunaPy Workflow
 
-[dependencies]
-io.github.qupath:qupath-extension-template
-```
-
-### 3. Run QuPath
-Run QuPath from the command line using
-```
-gradlew run
-```
-If all goes well, QuPath should launch and you can check the *Extensions* mention to confirm the extension is installed.
-
-
-## Set up in an IDE (optional)
-
-During development, things are likely to be much easier if you work within an IDE.
-
-QuPath itself is developed using IntelliJ, and you can import the extension template there.
-
-The setup process is as above, and you'll need a a [Run configuration](https://www.jetbrains.com/help/idea/run-debug-configuration.html) 
-to call `gradlew run`.
-
-
-## Customize the extension
-
-Now you're ready for the creative part.
-
-You can develop the extension using either Java or Groovy - the template includes examples of both.
-
-### Create the extension Java or Groovy file(s)
-
-For the extension to work, you need to create at least one file that extends `qupath.lib.gui.extensions.QuPathExtension`.
-
-There are two examples in the template, in two languages:
-* **Java:** `qupath.ext.template.DemoExtension.java`.
-* **Groovy:** `qupath.ext.template.DemoGroovyExtension.java`.
-
-You can pick the one that corresponds to the language you want to use, and delete the other.
-
-Then take your chosen file and rename it, edit it, move it to another package... basically, make it your own.
-
-> Please **don't neglect this step!** 
-> If you do, there's a chance of multiple extensions being created with the same class names... and causing confusion later.
-
-### Update the `META-INF/services` file
-
-For QuPath to *find* the extension later, the full class name needs to be available in `resources/META-INFO/services/qupath.lib.gui.extensions.QuPathExtensions`.
-
-So remember to edit that file to include the class name that you actually used for your extension.
-
-### Specify your license
-
-Add a license file to your GitHub repo so that others know what they can and can't do with your extension.
-
-This should be compatible with QuPath's license -- see https://github.com/qupath/qupath
-
-## Repository configuration
-
-### Easy install
-
-If you follow some conventions in naming your extension and making releases, then other QuPath users will find it easy to automatically
-install and update your extension!
-
-First, we suggest you name your extension `qupath-extension-[something]`, and keep it in its own repository (named the same as the extension),
-separate from other projects.
-
-Next, when you want to publish a new version of your extension, use the `github_release.yml` workflow included in this repository.
-
-To do so, you'd need to navigate to `Actions -> Make draft release -> Run workflow -> Run workflow` as shown in the following screenshot:
-
-![Screenshot from 2024-03-14 18-44-42](https://github.com/alanocallaghan/qupath-extension-template/assets/10779688/4712a209-eda7-4f80-8bed-bbab20e4f50a)
-
-This will automatically build the extension, and create a draft release containing the extension jar (and its associated sources and javadoc).
-You can then navigate to `Releases` and fill out information about the release --- the version, any significant changes, etc.
-Once published, users will be able to automatically install the extension as described here:
-https://qupath.readthedocs.io/en/0.5/docs/intro/extensions.html#installing-extensions
-
-### Catalogs
-
-QuPath's extension manager can easily install an extension if it is referenced in a **catalog**.
-A catalog is a JSON file hosted on a GitHub repository containing information about extensions, making it possible to easily manage them from QuPath.
-
-To create a catalog, follow the [extension catalog model documentation](https://qupath.github.io/extension-catalog-model/).
-You will need to create a JSON file containing specific information about your extension and host it on a dedicated GitHub repository.
-Once the catalog is created, any user will be able to easily install your catalog by:
-
-* Opening QuPath's extension manager by clicking on `Extensions` -> `Manage extensions` in QuPath.
-* Adding the URL to your catalog by clicking on `Manage extension catalogs` -> `Add` in the extension manager.
-* Clicking on the `+` symbol next to your extension in the extension manager.
-
-QuPath will then make it easy to manage your extension and automatically inform users when an update is available.
-
-### Replace this readme
-
-Don't forget to replace the contents of this readme with your own!
-
-
-## Getting help
-
-For questions about QuPath and/or creating new extensions, please use the forum at https://forum.image.sc/tag/qupath
-
-------
+This extension is the QuPath component of the [LunaPy](https://github.com/cregan727/lunapy) 
+pipeline for Lunaphore COMET multiplex imaging analysis.
 
 ## License
 
-This is just a template, you're free to use it however you like.
-You can treat the contents of *this repository only* as being under [the Unlicense](https://unlicense.org) (except for the Gradle wrapper, which has its own license included).
-
-If you use it to create a new QuPath extension, I'd strongly encourage you to select a suitable open-source license for the extension.
-
-Note that *QuPath itself* is available under the GPL, so you do have to abide by those terms: see https://github.com/qupath/qupath for more.
+LunaPath is open source software built on [QuPath](https://github.com/qupath/qupath) and licensed under [GPL v3](LICENSE).  
+Copyright (C) 2026 Claire Regan
