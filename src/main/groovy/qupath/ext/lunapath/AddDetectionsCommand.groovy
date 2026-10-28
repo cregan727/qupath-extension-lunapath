@@ -175,6 +175,10 @@ class AddDetectionsCommand {
                 println "INFO: Loaded ${cellRoiMap.size()} cell boundaries"
             }
 
+            // Legacy LunaPy output numbers cell polygons from 0 (Cell_0, Cell_1, ...),
+            // one below the nucleus ID. Newer output uses the same ID for both.
+            def offset = cellRoiMap.containsKey("0") ? 1 : 0
+
             // ================================
             // CLEAR + CREATE DETECTIONS
             // ================================
@@ -203,7 +207,7 @@ class AddDetectionsCommand {
 
                 def nucleusRoi = ROIs.createPolygonROI(points, plane)
                 def cellRoi = cellRoiMap.get(
-                    String.valueOf(numericId(id).toInteger() - 1), null)
+                    String.valueOf(numericId(id).toInteger() - offset), null)
                 def det = cellRoi != null
                     ? PathObjects.createCellObject(cellRoi, nucleusRoi, null, null)
                     : PathObjects.createCellObject(nucleusRoi, null, null, null)
